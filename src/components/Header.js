@@ -1,5 +1,5 @@
 "use client"
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Image from 'next/image';
 import Link from 'next/link';
 import InstagramLogo from "/public/Instagram_logo.webp"
@@ -13,12 +13,64 @@ import Modal from 'react-modal';
 import { IoCreateOutline } from "react-icons/io5";
 import { IoMdCloudUpload } from "react-icons/io";
 import { IoIosClose } from "react-icons/io";
+import { app } from '@/firebase';
+import {
+  getDownloadURL,
+  getStorage,
+  ref,
+  uploadBytesResumable,
+} from 'firebase/storage';
+import { sassFalse } from 'sass';
 
 
 
 const Header = () => {
   const [open,setOpen]=useState(false)
   const {data:session}=useSession();
+  const [selectedFile,setSelectedFile] =useState(null)
+  const [imageFileUrl,setImageFileUrl]=useState(null)
+  const filePickerRef =useRef(null)
+  const [imageFileUploading,setImageFileUploading]=useState(false)
+
+  const addImageToPost =(e)=>{
+    const file=e.target.files[0]
+    if(file){
+      setSelectedFile(file);
+      setImageFileUrl(URL.createObjectURL(file))
+      console.log(setImageFileUrl)
+    }
+  }
+  useEffect(()=>{
+    if(selectedFile){
+      uploadImageToStorage();
+    }
+  },[selectedFile]);
+
+async function uploadImageToStorage(){
+  setImageFileUploading(true);
+  const storage= await getStorage(app);
+  const fileName= new Date().getTime()+"-"+selectedFile.name;
+  const storageRef=ref(storage,fileName);
+  const uploadTask=uploadBytesResumable(storageRef, selectedFile);
+  uploadTask.on('state_changed',(snapshot)=>{
+    const progress=(snapshot.bytesTransferred/snapshot.totalBytes)*100
+    console.log("Upload is"+progress+"% done")
+  }
+  ,
+  (error)=>{
+    console.log(error)
+    setImageFileUploading(false)
+    setImageFileUrl(null)
+    setSelectedFile(null)
+  },()=>{
+    getDownloadURL(uploadTask.snapshot.ref).then((downloadURL)=>{
+      setImageFileUrl(downloadURL);
+      setImageFileUploading(sassFalse)
+      
+    })
+  }
+)
+}
  
   return (
     <div className=' shadow-sm border-b sticky top-0 bg-white z-30 p-3'>
@@ -43,7 +95,11 @@ const Header = () => {
         {open && (
           <Modal isOpen={open} className="max-w-lg w-[90%] p-6 absolute top-56 left-[50%] translate-x-[-50%] border-2 rounded-md shadow-sm " onRequestClose={() => setOpen(false)} arialHideApp={false} >
             <div className=' flex flex-col justify-center items-center h-[100%] '>
-            <IoMdCloudUpload className=' text-4xl text-blue-600 cursor-pointer' />
+              { selectedFile ? (
+                <image onClick={()=>setSelectedFile(null)} src={imageFileUrl} alt='selected file'   className={`w-full max-h-[250px] cursor-pointer h-96 4-96 object-contain rounded-md ${imageFileUploading ? "animate-pulse" : ""}` }/>
+              ) : (
+                <IoMdCloudUpload onClick={() => filePickerRef.current.click()} className=' text-4xl text-blue-600 cursor-pointer' />)}
+            <input hidden ref={filePickerRef} type="file" accept='image/*' onChange={addImageToPost} />
             </div>
             <input type="text" maxLength={150} placeholder='Please enter you thought' className=' m-4 border-none text-center  outline-none w-full focus:ring-0 ' />
           <button disabled className='gap-2 flex items-center w-full  bg-green-600 text-white p-2 shadow-sm rounded-md justify-center hover:brightness-105  disabled:bg-green-200 disabled:cursor-not-allowed disabled:hover:brightness-100'><IoMdSend className='h-6 w-6' /> Upload Post</button>
